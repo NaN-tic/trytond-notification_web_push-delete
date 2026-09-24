@@ -5,10 +5,13 @@ from datetime import datetime, time, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from proteus import Model
 from pywebpush import WebPushException
+from trytond.config import config
+from trytond.exceptions import UserError
 from trytond.modules.company.tests.tools import create_company, get_company
 from trytond.pool import Pool
 from trytond.tests.test_tryton import DB_NAME, drop_db
@@ -21,6 +24,12 @@ class TestNotifications(unittest.TestCase):
     def setUp(self):
         drop_db()
         super().setUp()
+        if not config.has_section('cryptography'):
+            config.add_section('cryptography')
+        previous_key = config.get('cryptography', 'fernet_key')
+        self.addCleanup(config.set, 'cryptography', 'fernet_key',
+            previous_key or '')
+        config.set('cryptography', 'fernet_key', Fernet.generate_key().decode())
 
     def tearDown(self):
         drop_db()
@@ -72,7 +81,11 @@ class TestNotifications(unittest.TestCase):
             self.assertIsNone(Message.publish(app, UserT(user.id),
                 title='Cart', body='Checkout', category='reminder'))
             # Subscribe two devices and verify independent delivery outcomes.
-            key = ec.generate_private_key(ec.SECP256R1()).public_key()
+            private_key = ec.generate_private_key(ec.SECP256R1())
+            pem = private_key.private_bytes(serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption())
+            key = private_key.public_key()
             key = key.public_bytes(serialization.Encoding.X962,
                 serialization.PublicFormat.UncompressedPoint)
             p256dh = base64.urlsafe_b64encode(key).decode().rstrip('=')
@@ -86,45 +99,70 @@ class TestNotifications(unittest.TestCase):
                     'p256dh': p256dh,
                     'auth': base64.urlsafe_b64encode(b'x' * 16).decode(),
                     }]))
-            with patch.object(App, 'private_key', return_value='test'):
-                App.write([app], {'push_enabled': True,
-                    'public_key': p256dh, 'subject': 'mailto:admin@example.com'})
-                message = Message.publish(app, UserT(user.id),
-                    title='Received', body='Your order is received')
-                self.assertEqual(len(message.deliveries), 2)
-                first, second = message.deliveries
-                with patch('pywebpush.webpush', return_value=SimpleNamespace(
-                        status_code=201)) as send:
-                    Delivery.send([first])
-                    Delivery.send([first])
-                    self.assertEqual(send.call_count, 1)
-                    self.assertIn('/app/notifications/', send.call_args.kwargs['data'])
-                self.assertEqual(first.state, 'accepted')
-                expired = SimpleNamespace(status_code=410)
-                with patch('pywebpush.webpush', side_effect=WebPushException(
-                        'expired', response=expired)):
-                    Delivery.send([second])
-                self.assertEqual(second.state, 'failed')
-                self.assertFalse(second.subscription.active)
-                retry = Message.publish(app, UserT(user.id),
-                    title='Retry', body='Transient failure').deliveries[0]
-                with patch('pywebpush.webpush', side_effect=WebPushException(
-                        'unavailable', response=SimpleNamespace(status_code=503))):
-                    Delivery.send([retry])
-                self.assertEqual(retry.state, 'pending')
-                self.assertEqual(retry.attempts, 1)
-                self.assertGreater(retry.next_attempt, datetime.now())
-                # Revoking preferences between queueing and sending cancels push.
-                pref, = Preference.search([('user', '=', user.id)])
-                Preference.write([pref], {'service': False})
-                Delivery.write([retry], {'next_attempt': datetime.now() - timedelta(seconds=1)})
-                with patch('pywebpush.webpush') as send:
-                    Delivery.send([retry])
-                    send.assert_not_called()
-                self.assertEqual(retry.state, 'cancelled')
-                inbox_only = Message.publish(app, UserT(user.id),
-                    title='Inbox', body='Still saved without push')
-                self.assertFalse(inbox_only.deliveries)
+            App.write([app], {'push_enabled': True,
+                'private_key_file': pem, 'private_key_filename': 'private_key.pem',
+                'public_key': p256dh, 'subject': 'mailto:admin@example.com'})
+            self.assertEqual(bytes(app.private_key_file), pem)
+            with transaction.set_context({
+                    'notification.web.application.private_key_file': 'size'}):
+                self.assertEqual(app.private_key().private_key.private_numbers(),
+                    private_key.private_numbers())
+            invalid_app = App(app.id)
+            invalid_app.public_key = 'mismatched-key'
+            with self.assertRaises(UserError):
+                App.validate([invalid_app])
+            for invalid_pem in [b'not a key',
+                    private_key.public_key().public_bytes(
+                        serialization.Encoding.PEM,
+                        serialization.PublicFormat.SubjectPublicKeyInfo),
+                    ec.generate_private_key(ec.SECP384R1()).private_bytes(
+                        serialization.Encoding.PEM,
+                        serialization.PrivateFormat.PKCS8,
+                        serialization.NoEncryption()),
+                    private_key.private_bytes(serialization.Encoding.PEM,
+                        serialization.PrivateFormat.PKCS8,
+                        serialization.BestAvailableEncryption(b'test'))]:
+                with self.assertRaises(UserError):
+                    App(private_key_file=invalid_pem).private_key()
+            message = Message.publish(app, UserT(user.id),
+                title='Received', body='Your order is received')
+            self.assertEqual(len(message.deliveries), 2)
+            first, second = message.deliveries
+            with patch('pywebpush.webpush', return_value=SimpleNamespace(
+                    status_code=201)) as send:
+                Delivery.send([first])
+                Delivery.send([first])
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(send.call_args.kwargs[
+                    'vapid_private_key'].private_key.private_numbers(),
+                    private_key.private_numbers())
+                self.assertIn('/app/notifications/', send.call_args.kwargs['data'])
+            self.assertEqual(first.state, 'accepted')
+            expired = SimpleNamespace(status_code=410)
+            with patch('pywebpush.webpush', side_effect=WebPushException(
+                    'expired', response=expired)):
+                Delivery.send([second])
+            self.assertEqual(second.state, 'failed')
+            self.assertFalse(second.subscription.active)
+            retry = Message.publish(app, UserT(user.id),
+                title='Retry', body='Transient failure').deliveries[0]
+            with patch('pywebpush.webpush', side_effect=WebPushException(
+                    'unavailable', response=SimpleNamespace(status_code=503))):
+                Delivery.send([retry])
+            self.assertEqual(retry.state, 'pending')
+            self.assertEqual(retry.attempts, 1)
+            self.assertGreater(retry.next_attempt, datetime.now())
+            # Revoking preferences between queueing and sending cancels push.
+            pref, = Preference.search([('user', '=', user.id)])
+            Preference.write([pref], {'service': False})
+            Delivery.write([retry], {'next_attempt': datetime.now() - timedelta(seconds=1)})
+            with patch('pywebpush.webpush') as send:
+                Delivery.send([retry])
+                send.assert_not_called()
+            self.assertEqual(retry.state, 'cancelled')
+            inbox_only = Message.publish(app, UserT(user.id),
+                title='Inbox', body='Still saved without push')
+            self.assertFalse(inbox_only.deliveries)
             transaction.commit()
         scheduled_message.reload()
         self.assertEqual(scheduled_message.state, 'sent')
@@ -212,6 +250,7 @@ class TestNotifications(unittest.TestCase):
             pool = Pool()
             ModelData = pool.get('ir.model.data')
             ModelAccess = pool.get('ir.model.access')
+            FieldAccess = pool.get('ir.model.field.access')
             Menu = pool.get('ir.ui.menu')
             ResUser = pool.get('res.user')
             configuration_menu = ModelData.get_id(
@@ -232,6 +271,10 @@ class TestNotifications(unittest.TestCase):
                         transaction.set_context(_check_access=True):
                     visible = Menu.search([('id', '=', configuration_menu)])
                     self.assertEqual(bool(visible), can_configure)
+                    self.assertEqual(FieldAccess.check(
+                        'notification.web.application',
+                        ['private_key_file', 'private_key_filename'],
+                        mode='read', raise_exception=False), can_configure)
                     access = ModelAccess.get_access(configuration_models)
                     for model in configuration_models:
                         self.assertTrue(access[model]['read'])

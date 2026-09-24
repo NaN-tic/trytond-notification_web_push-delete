@@ -583,3 +583,37 @@ msgstr "Tauleta"
 msgctxt "selection:notification.web.subscription,device_type:"
 msgid "Computer"
 msgstr "Ordinador"
+
+msgctxt "field:notification.web.application,private_key_file:"
+msgid "VAPID Private Key"
+msgstr "Clau privada VAPID"
+
+msgctxt "field:notification.web.application,private_key_filename:"
+msgid "Private Key Filename"
+msgstr "Nom del fitxer de clau privada"
+
+msgctxt "help:notification.web.application,private_key_file:"
+msgid "Upload the unencrypted PEM file for the VAPID private key."
+msgstr "Pugeu el fitxer PEM sense xifrar de la clau privada VAPID."
+
+msgctxt "model:ir.message,text:msg_invalid_vapid_private_key"
+msgid "Upload an unencrypted PEM private key using the P-256 elliptic curve."
+msgstr ""
+"Pugeu una clau privada PEM sense xifrar que utilitzi la corba el·líptica "
+"P-256."
+
+msgctxt "model:ir.message,text:msg_vapid_key_mismatch"
+msgid "The uploaded private key does not match the VAPID public key."
+msgstr "La clau privada pujada no coincideix amb la clau pública VAPID."
+
+msgctxt "field:notification.web.application,encrypted_private_key:"
+msgid "Encrypted VAPID Private Key"
+msgstr "Clau privada VAPID xifrada"
+
+msgctxt "model:ir.message,text:msg_vapid_encryption_key"
+msgid "Configure a valid [cryptography] fernet_key on the server to protect VAPID private keys."
+msgstr "Configureu una clau fernet_key vàlida a [cryptography] del servidor per protegir les claus privades VAPID."
+
+msgctxt "model:ir.message,text:msg_vapid_decryption"
+msgid "Unable to decrypt the VAPID private key. Check the server encryption key."
+msgstr "No es pot desxifrar la clau privada VAPID. Comproveu la clau de xifrat del servidor."

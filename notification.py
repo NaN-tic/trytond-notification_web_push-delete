@@ -10,9 +10,14 @@ from urllib.parse import urlsplit
 import requests
 from user_agents import parse as parse_user_agent
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import serialization
+from py_vapid import Vapid
 
 from trytond.config import config
 from trytond.exceptions import UserError
+from trytond.i18n import gettext
 from trytond.model import (
     DeactivableMixin, Index, ModelSQL, ModelView, Unique, Workflow, fields)
 from trytond.pool import Pool, PoolMeta
@@ -83,9 +88,63 @@ class Application(DeactivableMixin, ModelSQL, ModelView):
     origin = fields.Char('HTTPS Origin', required=True)
     base_path = fields.Char('Application Path', required=True)
     public_key = fields.Char('VAPID Public Key')
+    encrypted_private_key = fields.Binary('Encrypted VAPID Private Key')
+    private_key_file = fields.Function(fields.Binary('VAPID Private Key',
+        filename='private_key_filename',
+        help='Upload the unencrypted PEM file for the VAPID private key.'),
+        'get_private_key_file', 'set_private_key_file')
+    private_key_filename = fields.Char('Private Key Filename')
     subject = fields.Char('VAPID Contact',
         help='Contact URI, for example mailto:admin@example.com.')
     push_enabled = fields.Boolean('Enable Push Sending')
+
+    @classmethod
+    def __register__(cls, module_name):
+        super().__register__(module_name)
+        handler = cls.__table_handler__(module_name)
+        if handler.column_exist('private_key_file'):
+            table = cls.__table__()
+            cursor = Transaction().connection.cursor()
+            cursor.execute(*table.select(table.id, table.private_key_file))
+            for record_id, key_file in cursor.fetchall():
+                if key_file:
+                    encrypted = cls.get_fernet().encrypt(bytes(key_file))
+                    cursor.execute(*table.update(
+                        [table.encrypted_private_key], [encrypted],
+                        where=table.id == record_id))
+            handler.drop_column('private_key_file')
+
+    @classmethod
+    def get_fernet(cls):
+        key = config.get('cryptography', 'fernet_key')
+        try:
+            if not key:
+                raise ValueError
+            return Fernet(key)
+        except (ValueError, TypeError):
+            raise UserError(gettext(
+                'notification_web_push.msg_vapid_encryption_key')) from None
+
+    def get_private_key_file(self, name):
+        with Transaction().set_context({
+                'notification.web.application.encrypted_private_key': None}):
+            application = self.__class__(self.id)
+            encrypted = application.encrypted_private_key
+        value = None
+        if encrypted:
+            try:
+                value = self.get_fernet().decrypt(bytes(encrypted))
+            except InvalidToken:
+                raise UserError(gettext(
+                    'notification_web_push.msg_vapid_decryption')) from None
+        if Transaction().context.get(f'{self.__name__}.{name}') == 'size':
+            return len(value) if value else 0
+        return value
+
+    @classmethod
+    def set_private_key_file(cls, applications, name, value):
+        encrypted = cls.get_fernet().encrypt(bytes(value)) if value else None
+        cls.write(applications, {'encrypted_private_key': encrypted})
 
     @staticmethod
     def default_base_path():
@@ -120,13 +179,41 @@ class Application(DeactivableMixin, ModelSQL, ModelView):
             local_path(record.base_path[1:])
             if urlsplit(record.base_path).query or urlsplit(record.base_path).fragment:
                 raise UserError('The application path cannot contain a query or fragment.')
+            if record.private_key_file:
+                vapid = record.private_key()
+                public_key = base64.urlsafe_b64encode(
+                    vapid.public_key.public_bytes(
+                        serialization.Encoding.X962,
+                        serialization.PublicFormat.UncompressedPoint)
+                    ).decode().rstrip('=')
+                if (record.public_key
+                        and record.public_key.rstrip('=') != public_key):
+                    raise UserError(gettext(
+                        'notification_web_push.msg_vapid_key_mismatch'))
             if record.push_enabled and not (
                     record.public_key and record.subject
                     and record.private_key()):
                 raise UserError('Configure the public/private VAPID keys and contact.')
 
     def private_key(self):
-        return config.get('web_push', 'vapid_private_key_' + self.code)
+        with Transaction().set_context({
+                'notification.web.application.private_key_file': None}):
+            application = (self.__class__(self.id)
+                if self.id is not None and self.id >= 0 else self)
+            key_file = application.private_key_file
+        if key_file:
+            try:
+                key = serialization.load_pem_private_key(
+                    bytes(key_file), password=None)
+            except (ValueError, TypeError, UnsupportedAlgorithm):
+                raise UserError(gettext(
+                    'notification_web_push.msg_invalid_vapid_private_key')) from None
+            if (not isinstance(key, ec.EllipticCurvePrivateKey)
+                    or not isinstance(key.curve, ec.SECP256R1)):
+                raise UserError(gettext(
+                    'notification_web_push.msg_invalid_vapid_private_key'))
+            return Vapid(private_key=key)
+        return None
 
     def url(self, path=''):
         return self.origin.rstrip('/') + self.base_path + local_path(path)

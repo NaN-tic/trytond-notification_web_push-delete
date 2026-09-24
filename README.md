@@ -50,20 +50,27 @@ vapid --gen
 vapid --applicationServerKey
 ```
 
-Keep `private_key.pem` outside the repository and web root. Copy the printed
-application server key into the application's **VAPID Public Key**. Store the
-private-key path in the Tryton server configuration; for application code
-`customer_portal`:
+Copy the printed application server key into the application's **VAPID Public
+Key** and upload `private_key.pem` in **VAPID Private Key** from the Tryton client.
+The uploaded key must be an unencrypted PEM P-256 private key matching the public
+key. Only configuration users and administrators can access the uploaded file.
+The key is stored encrypted with Fernet in the application database, using the
+same `[cryptography] fernet_key` setting as `certificate_manager`. Configure the
+same master key on HTTP, cron and worker servers and back it up separately from
+the database. No per-application private key path is used. Missing or invalid
+master keys prevent uploading or using private keys; an incorrect master key
+cannot decrypt existing keys. Changing the master key requires re-encrypting
+existing keys, including certificates using that key.
 
-```ini
-[web_push]
-vapid_private_key_customer_portal = /protected/path/private_key.pem
-```
+Updating the module encrypts previously uploaded plaintext keys and removes the
+old plaintext column. The master key must be configured before this update.
+Older backups may still contain plaintext keys. Authorized configuration users
+and administrators can still download the decrypted PEM from Tryton.
 
 Set **VAPID Contact** to a contact URI, e.g. `mailto:admin@example.com`, and enable
-push sending. Use the same key/configuration on the HTTP, cron and worker
-processes. Restart these processes after changing server configuration. Do not
-regenerate keys on every deployment: existing subscriptions depend on them.
+push sending. HTTP, cron and worker processes use the key stored in the database.
+When upgrading from server configuration, upload the same existing key file:
+existing subscriptions depend on this key pair.
 
 The public browser-facing API belongs to the integrating application. It must
 validate authentication and CSRF, associate devices with the actual authenticated
