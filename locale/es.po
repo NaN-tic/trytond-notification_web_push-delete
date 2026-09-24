@@ -583,3 +583,36 @@ msgstr "Tableta"
 msgctxt "selection:notification.web.subscription,device_type:"
 msgid "Computer"
 msgstr "Ordenador"
+
+msgctxt "field:notification.web.application,private_key_file:"
+msgid "VAPID Private Key"
+msgstr "Clave privada VAPID"
+
+msgctxt "field:notification.web.application,private_key_filename:"
+msgid "Private Key Filename"
+msgstr "Nombre del archivo de clave privada"
+
+msgctxt "help:notification.web.application,private_key_file:"
+msgid "Upload the unencrypted PEM file for the VAPID private key."
+msgstr "Suba el archivo PEM sin cifrar de la clave privada VAPID."
+
+msgctxt "model:ir.message,text:msg_invalid_vapid_private_key"
+msgid "Upload an unencrypted PEM private key using the P-256 elliptic curve."
+msgstr ""
+"Suba una clave privada PEM sin cifrar que utilice la curva elíptica P-256."
+
+msgctxt "model:ir.message,text:msg_vapid_key_mismatch"
+msgid "The uploaded private key does not match the VAPID public key."
+msgstr "La clave privada subida no coincide con la clave pública VAPID."
+
+msgctxt "field:notification.web.application,encrypted_private_key:"
+msgid "Encrypted VAPID Private Key"
+msgstr "Clave privada VAPID cifrada"
+
+msgctxt "model:ir.message,text:msg_vapid_encryption_key"
+msgid "Configure a valid [cryptography] fernet_key on the server to protect VAPID private keys."
+msgstr "Configure una clave fernet_key válida en [cryptography] del servidor para proteger las claves privadas VAPID."
+
+msgctxt "model:ir.message,text:msg_vapid_decryption"
+msgid "Unable to decrypt the VAPID private key. Check the server encryption key."
+msgstr "No se puede descifrar la clave privada VAPID. Compruebe la clave de cifrado del servidor."

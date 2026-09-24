@@ -16,8 +16,20 @@
             <field name="user" ref="res.user_admin" />
             <field name="group" ref="group_notification" />
         </record>
+        <record model="ir.message" id="msg_vapid_encryption_key">
+            <field name="text">Configure a valid [cryptography] fernet_key on the server to protect VAPID private keys.</field>
+        </record>
+        <record model="ir.message" id="msg_vapid_decryption">
+            <field name="text">Unable to decrypt the VAPID private key. Check the server encryption key.</field>
+        </record>
         <record model="ir.message" id="msg_unique">
             <field name="text">This notification record already exists.</field>
+        </record>
+        <record model="ir.message" id="msg_invalid_vapid_private_key">
+            <field name="text">Upload an unencrypted PEM private key using the P-256 elliptic curve.</field>
+        </record>
+        <record model="ir.message" id="msg_vapid_key_mismatch">
+            <field name="text">The uploaded private key does not match the VAPID public key.</field>
         </record>
         <menuitem name="Notifications" id="menu_notification" />
         <record model="ir.ui.menu-res.group" id="menu_group">
@@ -79,6 +91,84 @@
         </record>
         <record model="ir.model.access" id="access_application_admin">
             <field name="model">notification.web.application</field>
+            <field name="group" ref="res.group_admin" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_file_default">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_file</field>
+            <field name="perm_read" eval="False" />
+            <field name="perm_write" eval="False" />
+            <field name="perm_create" eval="False" />
+            <field name="perm_delete" eval="False" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_file_configuration">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_file</field>
+            <field name="group" ref="group_notification_configuration" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_file_admin">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_file</field>
+            <field name="group" ref="res.group_admin" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_encrypted_private_key_default">
+            <field name="model">notification.web.application</field>
+            <field name="field">encrypted_private_key</field>
+            <field name="perm_read" eval="False" />
+            <field name="perm_write" eval="False" />
+            <field name="perm_create" eval="False" />
+            <field name="perm_delete" eval="False" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_encrypted_private_key_configuration">
+            <field name="model">notification.web.application</field>
+            <field name="field">encrypted_private_key</field>
+            <field name="group" ref="group_notification_configuration" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_encrypted_private_key_admin">
+            <field name="model">notification.web.application</field>
+            <field name="field">encrypted_private_key</field>
+            <field name="group" ref="res.group_admin" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_filename_default">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_filename</field>
+            <field name="perm_read" eval="False" />
+            <field name="perm_write" eval="False" />
+            <field name="perm_create" eval="False" />
+            <field name="perm_delete" eval="False" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_filename_configuration">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_filename</field>
+            <field name="group" ref="group_notification_configuration" />
+            <field name="perm_read" eval="True" />
+            <field name="perm_write" eval="True" />
+            <field name="perm_create" eval="True" />
+            <field name="perm_delete" eval="True" />
+        </record>
+        <record model="ir.model.field.access" id="access_application_private_key_filename_admin">
+            <field name="model">notification.web.application</field>
+            <field name="field">private_key_filename</field>
             <field name="group" ref="res.group_admin" />
             <field name="perm_read" eval="True" />
             <field name="perm_write" eval="True" />
