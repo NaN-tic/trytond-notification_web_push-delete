@@ -27,14 +27,6 @@ notifications, both every minute. Sending takes place in separate queue tasks,
 after the transaction that stores the inbox message has committed. HTTP calls
 never occur while confirming an order.
 
-When upgrading the initial campaign-based implementation, update both
-`notification_web_push` and any installed integrating modules,
-then restart the HTTP, cron and worker processes. Registration migrates the
-scheduled-message tables, recipient relations, inbox links and cron method to
-`notification.web.scheduled_message`, preserving record IDs and content.
-Existing XML identifiers are retained so menus and permissions are updated in
-place.
-
 ## Configure an application
 
 Administrators configure applications under **Notifications → Configuration → Applications**:

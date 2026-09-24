@@ -24,7 +24,6 @@ from trytond.pool import Pool, PoolMeta
 from trytond.pyson import Eval
 from trytond.transaction import Transaction
 
-from .migration import rename_scheduled_message_model
 
 CATEGORIES = [
     ('service', 'Orders and Service'),
@@ -371,11 +370,6 @@ class ScheduledMessage(Workflow, ModelSQL, ModelView):
     'Scheduled Message'
     __name__ = 'notification.web.scheduled_message'
 
-    @classmethod
-    def __register__(cls, module_name):
-        rename_scheduled_message_model(cls, 'notification.web.campaign')
-        super().__register__(module_name)
-
     name = fields.Char('Name', required=True, states=EDITABLE)
     application = fields.Many2One('notification.web.application', 'Application',
         required=True, states=EDITABLE)
@@ -592,24 +586,11 @@ class ScheduledMessageUser(ModelSQL):
         'Scheduled Message', required=True, ondelete='CASCADE')
     user = fields.Many2One('web.user', 'User', required=True, ondelete='CASCADE')
 
-    @classmethod
-    def __register__(cls, module_name):
-        rename_scheduled_message_model(cls, 'notification.web.campaign.user')
-        table = cls.__table_handler__(module_name)
-        table.column_rename('campaign', 'scheduled_message')
-        super().__register__(module_name)
-
 
 class Message(ModelSQL, ModelView):
     'Customer Inbox Message'
     __name__ = 'notification.web.message'
     _rec_name = 'title'
-
-    @classmethod
-    def __register__(cls, module_name):
-        table = cls.__table_handler__(module_name)
-        table.column_rename('campaign', 'scheduled_message')
-        super().__register__(module_name)
 
     application = fields.Many2One('notification.web.application', 'Application',
         required=True, ondelete='CASCADE')
@@ -777,15 +758,6 @@ class Delivery(ModelSQL, ModelView):
 
 class Cron(metaclass=PoolMeta):
     __name__ = 'ir.cron'
-
-    @classmethod
-    def __register__(cls, module_name):
-        super().__register__(module_name)
-        table = cls.__table__()
-        cursor = Transaction().connection.cursor()
-        cursor.execute(*table.update([table.method],
-            ['notification.web.scheduled_message|dispatch_due'],
-            where=table.method == 'notification.web.campaign|dispatch_due'))
 
     @classmethod
     def __setup__(cls):
